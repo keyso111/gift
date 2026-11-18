@@ -40,21 +40,28 @@
 
   /* ================= 按钮组 ================= */
   .action-btn {
-    position: fixed; bottom: 15%; transform: translateY(20px);
-    background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3);
-    color: #FFF; padding: 12px 32px; border-radius: 30px; font-size: 15px; letter-spacing: 2px;
+    position: fixed; bottom: 8%; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #FFF; padding: 14px 40px; border-radius: 30px; font-size: 16px; letter-spacing: 2px;
+    min-width: 160px; text-align: center; box-sizing: border-box;
     cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     opacity: 0; pointer-events: none; transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1); z-index: 10;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   }
-  .action-btn.show { opacity: 1; pointer-events: auto; transform: translateY(0); }
+  .action-btn.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .action-btn:active { background: rgba(255, 105, 180, 0.35); }
   .action-btn:hover { background: rgba(255, 105, 180, 0.3); border-color: #FF69B4; box-shadow: 0 0 20px rgba(255, 105, 180, 0.4); }
-  
-  #replay-btn { left: 40%; transform: translateX(-50%) translateY(20px); }
-  #replay-btn.show { transform: translateX(-50%) translateY(0); }
-  
-  #save-btn { left: 60%; transform: translateX(-50%) translateY(20px); border-color: rgba(255, 182, 193, 0.5); }
-  #save-btn.show { transform: translateX(-50%) translateY(0); }
+
+  #replay-btn { bottom: 16%; }
+  #save-btn { bottom: 8%; border-color: rgba(255, 182, 193, 0.5); }
   #save-btn:hover { background: rgba(255, 182, 193, 0.3); border-color: #FFB6C1; box-shadow: 0 0 20px rgba(255, 182, 193, 0.4); }
+
+  /* 手机端：两按钮上下排列，加大点击区域 */
+  @media (max-width: 600px) {
+    .action-btn { min-width: 200px; padding: 15px 36px; font-size: 16px; }
+    #replay-btn { bottom: 18%; }
+    #save-btn { bottom: 9%; }
+  }
 
   /* ================= 弹窗样式 ================= */
   #intro-overlay {
@@ -205,7 +212,8 @@
   let bgStars = [];
   function initBgStars() {
     bgStars = [];
-    for (let i = 0; i < 80; i++) {
+    const starCount = isMobile() ? 35 : 80;
+    for (let i = 0; i < starCount; i++) {
       bgStars.push({
         x: Math.random() * W, y: Math.random() * H,
         r: Math.random() * 2 + 0.5, alpha: Math.random() * 0.5 + 0.1,
@@ -218,8 +226,14 @@
   const TRAIL_CHARS = ['✦', '✧', '+', '·', '❀']; 
   const TRAIL_COLORS = ['#FFB6C1', '#FFE4E1', '#FFFFFF', '#FF69B4']; 
 
+  function isMobile() {
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 600;
+  }
+
   function resize() {
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    // 手机端把 DPR 限制到 1.5，避免超高分辨率画布导致掉帧
+    const maxDPR = isMobile() ? 1.5 : 2;
+    DPR = Math.min(window.devicePixelRatio || 1, maxDPR);
     W = window.innerWidth;
     H = window.innerHeight;
     canvas.width = Math.round(W * DPR);
@@ -261,7 +275,11 @@
   }
 
   function buildParticles() {
-    const count = Math.max(CFG.minParticles, Math.min(CFG.maxParticles, Math.round(Math.min(W, H) * CFG.densityFactor)));
+    // 手机端大幅减少粒子数量，保证流畅；桌面端保持原密度
+    const mobile = isMobile();
+    const maxP = mobile ? 750 : CFG.maxParticles;
+    const minP = mobile ? 280 : CFG.minParticles;
+    const count = Math.max(minP, Math.min(maxP, Math.round(Math.min(W, H) * CFG.densityFactor)));
     particles = new Array(count);
     for (let i = 0; i < count; i++) {
       const t = (i / count) * Math.PI * 2;
