@@ -66,7 +66,6 @@
   /* ================= 弹窗样式 ================= */
   #intro-overlay {
     position: fixed; inset: 0; background: rgba(20, 0, 10, 0.6);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     display: flex; justify-content: center; align-items: center;
     z-index: 100; transition: opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1);
   }
@@ -75,7 +74,8 @@
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255,255,255,0.5) inset;
     text-align: center; max-width: 90vw; width: 440px;
     transform: translateY(0) scale(1); transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-    position: relative;
+    position: relative; z-index: 101;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* ★ 修改：贴纸风格照片展示区 */
@@ -277,8 +277,8 @@
   function buildParticles() {
     // 手机端大幅减少粒子数量，保证流畅；桌面端保持原密度
     const mobile = isMobile();
-    const maxP = mobile ? 750 : CFG.maxParticles;
-    const minP = mobile ? 280 : CFG.minParticles;
+    const maxP = mobile ? 550 : CFG.maxParticles;
+    const minP = mobile ? 220 : CFG.minParticles;
     const count = Math.max(minP, Math.min(maxP, Math.round(Math.min(W, H) * CFG.densityFactor)));
     particles = new Array(count);
     for (let i = 0; i < count; i++) {
@@ -354,11 +354,16 @@
   }
 
   let lastTime = 0;
-  let letterTimer = null; 
+  let letterTimer = null;
+  let lastFrame = 0;
+  const FRAME_INTERVAL = isMobile() ? 1000 / 30 : 0; // 手机端限 30fps，减半渲染压力
 
   function loop(now) {
     requestAnimationFrame(loop);
-    
+
+    if (isMobile() && now - lastFrame < FRAME_INTERVAL) return;
+    lastFrame = now;
+
     if (!isStarted) {
       render(0);
       lastTime = now;
@@ -521,12 +526,15 @@
       item.word = p.word;
       item.color = p.color;
       
-      item.isHighlight = (trebleLevel > 0.6 && Math.random() < 0.3);
+      item.isHighlight = (!isMobile() && trebleLevel > 0.6 && Math.random() < 0.3);
       
       drawList.push(item);
     }
 
-    drawList.sort(function (a, b) { return b.z - a.z; });
+    // 手机端跳过每帧排序，省去大数组 sort 开销
+    if (!isMobile()) {
+      drawList.sort(function (a, b) { return b.z - a.z; });
+    }
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -547,9 +555,10 @@
       let alpha = Math.min(1, Math.max(0.2, d.persp * 1.1));
       if (letterEl.classList.contains('show')) alpha *= 0.4;
       if (state === 'shrink') alpha = Math.min(1, alpha + 0.5);
-      
-      if ((state === 'float' || state === 'explode') && d.persp > 0.8) {
-        ctx.globalAlpha = alpha * 0.25; 
+
+      // 手机端只画一遍，去掉重复描边，降低 fillText 开销
+      if (!isMobile() && (state === 'float' || state === 'explode') && d.persp > 0.8) {
+        ctx.globalAlpha = alpha * 0.25;
         ctx.fillText(d.word, d.sx, d.sy);
         ctx.globalAlpha = alpha;
         ctx.fillText(d.word, d.sx, d.sy);
@@ -615,8 +624,9 @@
       const penScreenY = cy + y1 * penPersp * zoomFactor;
 
       if (drawProgress < 1) {
-        for (let i = 0; i < 3; i++) {
-          if (Math.random() > 0.4) {
+        const trailN = isMobile() ? 1 : 3;
+        for (let i = 0; i < trailN; i++) {
+          if (Math.random() > 0.5) {
             trailParticles.push({
               x: penScreenX + (Math.random() - 0.5) * 15,
               y: penScreenY + (Math.random() - 0.5) * 15,
@@ -792,10 +802,10 @@
   const btnConfirm = document.getElementById('btn-confirm');
   const btnCancel = document.getElementById('btn-cancel');
 
-  btnConfirm.addEventListener('click', () => {
+  function startGift() {
     overlay.classList.add('fade-out');
     card.classList.add('scale-out');
-    
+
     bgmAudio.volume = 0.6;
     bgmAudio.play().then(() => {
       musicTip.classList.remove('paused');
@@ -803,15 +813,21 @@
       console.log('播放被拦截或音频缺失', e);
       musicTip.classList.add('paused');
     });
-    
+
     initAudio();
 
     setTimeout(() => {
       overlay.style.display = 'none';
       isStarted = true;
-      lastTime = performance.now(); 
+      lastTime = performance.now();
     }, 800);
-  });
+  }
+
+  // 微信/iOS WebView 里 click 可能不触发，同时绑 touchend，并用 flag 防止重复
+  let started = false;
+  function confirmOnce() { if (started) return; started = true; startGift(); }
+  btnConfirm.addEventListener('click', confirmOnce);
+  btnConfirm.addEventListener('touchend', function (e) { e.preventDefault(); confirmOnce(); });
 
   musicTip.addEventListener('click', () => {
     if (bgmAudio.paused) {
@@ -832,14 +848,14 @@
     { h1: "最后一次挽留...", p: "（其实点“确定”一点都不会后悔的！）" }
   ];
 
-  btnCancel.addEventListener('click', () => {
+  function pleadCancel() {
     const h1 = card.querySelector('h1');
     const p = card.querySelector('p');
     const textIndex = Math.min(cancelCount, pleadTexts.length - 1);
     const text = pleadTexts[textIndex];
     h1.innerHTML = text.h1;
     p.innerText = text.p;
-    cancelCount++; 
+    cancelCount++;
 
     if (cancelCount > 2) {
       const scaleCancel = Math.max(0.4, 1 - (cancelCount - 2) * 0.2);
@@ -853,9 +869,11 @@
         btnConfirm.style.width = '100%';
       }
     }
-  });
+  }
+  btnCancel.addEventListener('click', pleadCancel);
+  btnCancel.addEventListener('touchend', function (e) { e.preventDefault(); pleadCancel(); });
 
-  replayBtn.addEventListener('click', () => {
+  function replayGift() {
     if (letterTimer) { clearTimeout(letterTimer); letterTimer = null; }
     letterEl.classList.remove('show');
     replayBtn.classList.remove('show');
@@ -877,14 +895,18 @@
     
     if (bgmAudio) { bgmAudio.currentTime = 0; }
     ctx.fillStyle = '#050002'; ctx.fillRect(0, 0, W, H);
-  });
+  }
+  replayBtn.addEventListener('click', replayGift);
+  replayBtn.addEventListener('touchend', function (e) { e.preventDefault(); replayGift(); });
 
-  saveBtn.addEventListener('click', () => {
+  function saveGift() {
     const link = document.createElement('a');
     link.download = '星河情书.png';
     link.href = canvas.toDataURL('image/png');
     link.click();
-  });
+  }
+  saveBtn.addEventListener('click', saveGift);
+  saveBtn.addEventListener('touchend', function (e) { e.preventDefault(); saveGift(); });
 
   resize();
   buildParticles();
